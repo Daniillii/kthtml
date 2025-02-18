@@ -1,0 +1,53 @@
+1. create table st.lidssalaryhist as - Создает таблицу lidssalaryhist в схеме st, копируя данные из de.histgroup.
+2. select  from de.histgroup h - Выбирает все данные из таблицы histgroup для создания новой таблицы.
+3. order by h.person, h.dt; - Сортирует данные по полям person и dt.
+
+4. alter table st.lids_salary_hist - Об alters таблицу lids_salary_hist.
+5. add effective_from date, - Добавляет столбец effective_from типа date.
+6. add effective_to date default to_date('2999-12-31', 'YYYY-MM-DD'); - Добавляет столбец effective_to с значением по умолчанию, установленным на 31 декабря 2999 года.
+
+7. with n as ( - Начинает определение временной таблицы n.
+8. select person, dt, - Выбирает поля person и dt.
+9. (lead(dt, 1, effective_to) over (partition by person order by dt) - interval '1 days') as effective_to - Рассчитывает effective_to, устанавливая его на день перед следующей датой.
+
+10. update st.lids_salary_hist - Обновляет таблицу lids_salary_hist.
+11. set effective_from = n.dt, - Устанавливает effective_from равным dt из временной таблицы n.
+12. effective_to=n.effective_to - Устанавливает effective_to из временной таблицы n.
+13. from n as n - Определяет источник данных для обновления.
+14. where st.lids_salary_hist.dt=n.dt and st.lids_salary_hist.person=n.person; - Условие для обновления строк, соответствующих данным из n.
+
+15. create table st.lids_salary_log as - Создает таблицу lids_salary_log в схеме st, копируя данные из de.salary_payments.
+16. select  from de.salarypayments sp - Выбирает все данные из таблицы salarypayments.
+17. order by person, dt; - Сортирует данные по полям person и dt.
+
+18. alter table st.lidssalarylog - Об alters таблицу lidssalarylog.
+19. add column monthpaid int4, - Добавляет столбец monthpaid типа integer.
+20. add column monthrest int4; - Добавляет столбец monthrest типа integer.
+
+21. create view st.hist as - Создает представление hist в схеме st.
+22. select p.person, p.dt, p.payment, sh.salary, sh.effectivefrom, sh.effectiveto, extract(month from p.dt) as month - Выбирает поля из lidssalarylog и lidssalaryhist.
+23. from st.lidssalarylog p - Указывает таблицу lidssalarylog как основной источник.
+24. left join st.lidssalaryhist sh - Выполняет левое соединение с таблицей lidssalaryhist.
+25. on sh.person = p.person - Указывает условие соединения по полю person.
+26. where p.dt between sh.effectivefrom and sh.effectiveto; - Ограничивает данные, выбирая только те, которые попадают в диапазон.
+
+27. create view st.aggregatedsal as - Создает представление aggregatedsal в схеме st.
+28. select sp.dt, sp.payment, sp.person, sp.salary, sp.effectivefrom, sp.effectiveto, - Выбирает нужные поля.
+29. (sp.payment + lag(sp.payment, 1, 0) over (partition by sp.person, sp.effectivefrom, sp.month order by sp.dt) + - Рассчитывает агрегированные данные по платежам для месяца.
+30. lag(sp.payment, 2, 0) over (...) + - Добавляет платежи за два предыдущих месяца.
+31. lag(sp.payment, 3, 0) over (...) as aggr - Добавляет платежи за три предыдущих месяца и именует агрегированные данные.
+
+32. update st.lidssalarylog - Обновляет таблицу lidssalarylog.
+33. set monthpaid = a.aggr, - Устанавливает значение monthpaid равным агрегированным данным a.aggr.
+34. monthrest = a.salary - a.aggr - Разъясняет значение monthrest как разницу между зарплатой и суммарными платежами.
+35. from st.aggregatedsal as a - Указывает на источник данных для обновления.
+36. where st.lidssalarylog.dt = a.dt and st.lidssalarylog.person = a.person; - Условие для обновления строк, соответствующих данным.
+
+37. select  from de.histgroup h - Извлекает данные из таблицы histgroup.
+38. order by h.person, h.dt; - Сортирует данные по person и dt.
+
+39. alter table st.lids_salary_hist - Об alters таблицу lids_salary_hist.
+40. drop column effective_from, - Удаляет столбец effective_from.
+41. drop column effective_to; - Удаляет столбец effective_to.
+
+42. select  from st.lidssalaryhist; - Извлекает данные из lidssalaryhist.
