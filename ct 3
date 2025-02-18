@@ -1,0 +1,79 @@
+ct 3
+-- Создаем таблицу ST.LIDS_BOOK_INFO, используя данные из таблицы de.html_data
+CREATE TABLE ST.LIDS_BOOK_INFO AS
+SELECT 
+  -- Получаем book_id, проверяем длину извлеченной строки
+  CASE 
+    WHEN LENGTH(TRIM(SUBSTRING(value, '<p>(.*?)</p>'))) > 2 
+    -- Если длина больше 2, берем первые 3 символа
+    THEN SUBSTRING(TRIM(SUBSTRING(value, '<p>(.*?)</p>')), 1, 3) 
+    -- Иначе, просто обрезаем лишние пробелы
+    ELSE TRIM(SUBSTRING(value, '<p>(.*?)</p>'))
+  END AS book_id,
+  
+  -- Извлечение жанра (genre) из HTML
+  TRIM(SUBSTRING(value, '<h1>(.*?)</h1>')) AS genre,
+  
+  -- Извлечение названия книги (title)
+  CASE 
+    WHEN TRIM(SUBSTRING(value, '<p class="title">(.*?)</p>')) = '' 
+    -- Если название пустое, берем автора
+    THEN TRIM(SUBSTRING(value, '<p class="author">(.*?)</p>'))
+    -- Иначе, берем название
+    ELSE TRIM(SUBSTRING(value, '<p class="title">(.*?)</p>'))
+  END AS title,
+  
+  -- Извлечение автора (author)
+  CASE 
+    WHEN TRIM(SUBSTRING(value, '<p class="title">(.*?)</p>')) = '' 
+    -- Если название книги пустое, возвращаем NULL для автора
+    THEN NULL
+    -- Иначе, извлекаем автора
+    ELSE TRIM(SUBSTRING(value, '<p class="author">(.*?)</p>'))
+  END AS author,
+  
+  -- Извлечение цены (price)
+  TRIM(SUBSTRING(value, '<p class="price">(.*?)</p>')) AS price
+FROM de.html_data hd; -- Указываем таблицу, откуда выбираем данные
+
+-- Вставка данных в таблицу стейта ST.LIDS_LOG
+INSERT INTO ST.LIDS_LOG (DT, LINK, USER_AGENT, REGION)
+SELECT 
+  temp_1.date, -- Дата из временной таблицы
+  temp_1.link, -- Ссылка из временной таблицы
+  temp_1.user_agent, -- User agent из временной таблицы
+  temp_2.region -- Регион из второй временной таблицы
+FROM (
+  -- Исходный SELECT для получения временной таблицы temp_1
+  SELECT 
+    -- Преобразуем время в дату
+    TO_TIMESTAMP(part_2[1], 'YYYYMMDDHH24MISS')::date AS date,
+    -- Страница формируется из части с http
+    TRIM(CONCAT('http', part_1[1])) AS link,
+    -- Извлечение user agent из строки логов
+    TRIM(SUBSTRING(data, STRPOS(data, part_3[1]))) AS user_agent,
+    -- IP адреса из строки
+    TRIM(part_4[1]) AS ip
+  FROM de.log, 
+  -- Используем REGEXP_MATCH для извлечения URL
+  LATERAL REGEXP_MATCH(data, 'http(.*?)\s') AS part_1, 
+  -- Извлечение временной метки
+  LATERAL REGEXP_MATCH(data, '\d{14}') AS part_2, 
+  -- Извлечение user agent
+  LATERAL REGEXP_MATCH(data, '[ABCDEFGHIJKLMNOPQRSFTUVWXYZ]\w+') AS part_3,
+  -- Извлечение IP адреса
+  LATERAL REGEXP_MATCH(data, '\d+\.\d+\.\d+\.\d+') AS part_4
+) AS temp_1
+-- Объединяем с таблицей temp_2 для получения информации о регионе
+JOIN (
+  SELECT 
+    data_part_1[1] AS ip, -- извлеченный IP
+    TRIM(data_part_2[1]) AS region -- извлеченный регион
+  FROM de.ip,
+  -- Извлечение IP адреса
+  LATERAL REGEXP_MATCH(data, '\d+\.\d+\.\d+\.\d+') AS data_part_1,
+  -- Извлечение региона
+  LATERAL REGEXP_MATCH(data, '\s.+') AS data_part_2
+) AS temp_2
+-- Соединяем по полю IP
+ON temp_1.ip = temp_2.ip;
