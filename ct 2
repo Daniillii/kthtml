@@ -1,0 +1,121 @@
+ct 2 
+-- Запрос 1:
+
+SELECT
+    t1.name,  -- Извлекает имя пассажира из таблицы passengers (t1)
+    sum(t2.price) as all_sum  -- Вычисляет сумму цен всех перелетов для каждого пассажира и присваивает имя all_sum
+FROM
+    passengers t1  -- Основная таблица, из которой выбираем данные о пассажирах
+INNER JOIN 
+    fly_mapping t3 on t1.id = t3.passenger_id  -- Соединяет таблицу passengers с таблицей fly_mapping по id пассажира
+INNER JOIN
+    flying t2 on t3.flying_id = t2.id  -- Соединяет таблицу fly_mapping с таблицей flying по id рейса
+GROUP BY
+    t1.name;  -- Группирует результаты по имени пассажира, чтобы получить сумму цен для каждого 
+
+
+-- Запрос 2:
+
+SELECT
+    t1.age_group,  -- Извлекает возрастную группу пассажира из таблицы passengers (t1)
+    round(avg(t2.flight_time), 2) as minute_time  -- Вычисляет среднее время полета для каждой возрастной группы и округляет до 2 знаков после запятой; имя поля - minute_time
+FROM
+    passengers t1  -- Основная таблица для выборки данных о пассажирах
+INNER JOIN
+    fly_mapping t3 on t1.id = t3.passenger_id  -- Соединяет passengers с fly_mapping по id пассажира
+INNER JOIN
+    flying t2 on t3.flying_id = t2.id  -- Соединяет fly_mapping с flying по id рейса
+GROUP BY
+    t1.age_group;  -- Группирует результаты по возрастной группе для получения среднего времени полета
+
+
+-- Общие комментарии:
+- `SELECT`: Задает, какие колонки нужно извлечь из таблицы.
+- `FROM`: Указывает основную таблицу для выборки данных.
+- `INNER JOIN`: Объединяет две таблицы по общему полю (id пассажира или id рейса), выбирая только те строки, которые имеют совпадения в обеих таблицах.
+- `GROUP BY`: Операция, которая группирует строки, чтобы математические функции, такие как SUM() и AVG(), могли применяться.
+
+
+-- Запрос 3:
+
+SELECT 
+    t1.name,  -- Извлекает имя пассажира из таблицы passengers (t1)
+    COUNT(t3.flying_id) AS biggest_fly  -- Подсчитывает количество перелетов для каждого пассажира и присваивает имя biggest_fly
+FROM 
+    passengers AS t1  -- Основная таблица для извлечения данных о пассажирах
+INNER JOIN 
+    fly_mapping AS t3 ON t1.id = t3.passenger_id  -- Соединяет таблицу passengers с таблицей fly_mapping по id пассажира
+INNER JOIN 
+    flying AS t2 ON t3.flying_id = t2.id  -- Соединяет таблицу fly_mapping с таблицей flying по id рейса
+GROUP BY 
+    t1.id  -- Группирует результаты по id пассажира
+HAVING 
+    COUNT(t3.flying_id) = (  -- Фильтрует группы, оставляя только тех пассажиров, у которых количество перелетов равно максимальному
+        SELECT 
+            MAX(biggest_fly)  -- Извлекает максимальное количество перелетов
+        FROM (
+            SELECT 
+                COUNT(t3.flying_id) AS biggest_fly  -- Подсчитывает количество перелетов для каждого пассажира
+            FROM 
+                passengers AS t1
+            JOIN 
+                fly_mapping AS t3 ON t1.id = t3.passenger_id  -- Соединяет passengers с fly_mapping по id пассажира
+            GROUP BY 
+                t1.id  -- Группирует по пассажиру
+        ) AS subquery  -- Подзапрос для извлечения максимального количества перелетов
+    );
+
+
+-- Запрос 4:
+
+SELECT 
+    pq.passenger_id,  -- Извлекает id пассажира из подзапроса (pq)
+    p1.name,  -- Извлекает имя пассажира из таблицы passengers (p1)
+    pq.flight_count  -- Извлекает количество перелетов из подзапроса (pq)
+FROM 
+    (  -- Начало подзапроса
+        SELECT 
+            t1.id AS passenger_id,  -- Извлекает id пассажира
+            COUNT(t3.id) AS flight_count  -- Подсчитывает количество перелетов для каждого пассажира
+        FROM 
+            passengers AS t1  -- Основная таблица для данных о пассажирах
+        LEFT JOIN 
+            fly_mapping AS t3 ON t1.id = t3.passenger_id  -- Соединяет passengers с fly_mapping по id пассажира
+        GROUP BY 
+            t1.id  -- Группирует результаты по id пассажира
+    ) AS pq,  -- Подзапрос, возвращающий id и количество перелетов пассажиров
+    passengers AS p1  -- Дополнительная таблица для извлечения имен пассажиров
+WHERE 
+    pq.flight_count > (  -- Фильтрует пассажиров, у которых количество перелетов больше среднего
+        SELECT 
+            AVG(flight_count)  -- Извлекает среднее количество перелетов
+        FROM 
+        (
+            SELECT 
+                COUNT(t3.id) AS flight_count  -- Подсчитывает количество перелетов для каждого пассажира
+            FROM 
+                passengers AS t1
+            LEFT JOIN 
+                fly_mapping AS t3 ON t1.id = t3.passenger_id  -- Соединяет passengers с fly_mapping по id пассажира
+            GROUP BY 
+                t1.id  -- Группирует результаты по id пассажира
+        ) AS avg_flights  -- Подзапрос для вычисления среднего количества перелетов
+    )
+    AND pq.passenger_id = p1.id;  -- Соединяет результаты подзапроса с таблицей passengers, чтобы получить имя пассажира
+
+
+-- Запрос 5:
+
+SELECT 
+    t1.point_from,  -- Извлекает точку выступления рейса из таблицы flying (t1)
+    t1.point_to,  -- Извлекает точку назначения рейса из таблицы flying (t1)
+    COUNT(t2.id) AS arrival_count  -- Подсчитывает количество прибытий (количество россиян с рейсом) и присваивает имя arrival_count
+FROM 
+    flying AS t1  -- Основная таблица для данных о рейсах
+JOIN 
+    fly_mapping AS t2 ON t1.id = t2.flying_id  -- Соединяет таблицу flying с таблицей fly_mapping по id рейса
+GROUP BY 
+    t1.point_from,  -- Группирует результаты по точке выступления
+    t1.point_to  -- Группирует результаты по точке назначения
+ORDER BY 
+    arrival_count DESC;  -- Сортирует результаты по количеству прибытий в порядке убывания
