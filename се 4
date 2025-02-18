@@ -1,0 +1,80 @@
+се 4
+Вот ваш код с комментариями, объясняющими каждую строку:
+
+```python
+import pandas as pd  # Импорт библиотеки pandas для работы с данными в таблицах
+import psycopg2  # Импорт библиотеки psycopg2 для подключения к PostgreSQL
+
+# Параметры подключения к базе данных
+db_params = {
+    'dbname': 'home',  # Имя базы данных
+    'user': 'student',  # Имя пользователя для подключения
+    'password': 'gendalfthegreat',  # Пароль пользователя
+    'host': '212.8.247.94',  # Адрес хоста базы данных
+    'port': '5432'  # Порт для подключения к базе данных
+}
+
+# Функция для загрузки данных из Excel файла
+def load_data_from_excel(file_path, sheet_name):  # Параметры: путь к файлу и имя листа
+    df = pd.read_excel(file_path, sheet_name=sheet_name)  # Чтение данных из указанного листа Excel
+    return df  # Возврат загруженного DataFrame
+
+# Функция для подключения к базе данных
+def get_db_connection():
+    conn = psycopg2.connect(*db_params)  # Установка соединения с базой данных с помощью параметров подключения
+    return conn  # Возврат объекта соединения
+
+# Функция для получения медицинских данных из базы данных
+def get_med_data():
+    conn = get_db_connection()  # Получение соединения с базой данных
+    query_an_name = "SELECT * FROM de.med_an_name"  # SQL запрос для получения данных анализа
+    query_name = "SELECT * FROM de.med_name"  # SQL запрос для получения наименований
+
+    an_name_df = pd.read_sql(query_an_name, conn)  # Чтение данных анализа в DataFrame
+    name_df = pd.read_sql(query_name, conn)  # Чтение наименований в DataFrame
+
+    conn.close()  # Закрытие соединения с базой данных
+
+    return an_name_df, name_df  # Возврат DataFrame с данными анализа и наименованиями
+
+# Функция для обработки данных
+def process_data(df, an_name_df, name_df, mode):  # Параметры: DataFrame с данными, данные анализа, данные наименования, режим обработки
+    result = []  # Инициализация списка для хранения результатов
+
+    # Итерация по каждой строке в DataFrame
+    for index, row in df.iterrows():
+        patient_code = row['Код пациента']  # Получение кода пациента
+        test_name = row['анализ']  # Получение названия анализа
+        test_value = row['значение']  # Получение значения анализа
+
+        norm = an_name_df.loc[an_name_df['анализ'] == test_name]  # Поиск нормы для текущего анализа
+        if not norm.empty:  # Проверка, есть ли норма
+            normal_range = (norm['min'].values[0], norm['max'].values[0])  # Получение диапазона норм
+            if test_value < normal_range[0]:  # Проверка, ниже ли значение минимальной нормы
+                result.append((patient_code, test_name, 'Понижен'))  # Добавление результата в список
+            elif test_value > normal_range[1]:  # Проверка, выше ли значение максимальной нормы
+                result.append((patient_code, test_name, 'Повышен'))  # Добавление результата в список
+
+    # Фильтрация результатов в зависимости от режима
+    if mode == 'hard':
+        patient_counts = pd.DataFrame(result, columns=['Код пациента', 'анализ', 'заключение'])  # Создание DataFrame с результатами
+        filtered_result = patient_counts.groupby('Код пациента').filter(lambda x: len(x) >= 2)  # Фильтрация по количеству анализов
+    else:
+        filtered_result = pd.DataFrame(result, columns=['Код пациента', 'анализ', 'заключение'])  # Создание DataFrame с результатами
+
+    return filtered_result  # Возврат обработанных результатов
+
+# Функция для сохранения данных в Excel файл
+def save_to_excel(df, file_name):
+    df.to_excel(file_name, index=False)  # Сохранение DataFrame в Excel, без индексация
+
+# Главная функция для выполнения скрипта
+def main():
+    
+    file_path = 'medicine.xlsx'  # Путь к Excel файлу
+    easy_data = load_data_from_excel(file_path, 'easy')  # Загрузка данных из листа 'easy'
+    hard_data = load_data_from_excel(file_path, 'hard')  # Загрузка данных из листа 'hard'
+
+    an_name_df, name_df = get_med_data()  # Получение медицинских данных
+
+    easy_result = process_data(easy_data, an_name_df, name_df, mode='easy')  # Обработка легких данных
